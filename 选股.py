@@ -1583,14 +1583,20 @@ def build_advice(senti, idx, mainline):
 
     # 指数买卖点（点位都用上证，条件写清楚前置信号）
     buy_txt = sell_txt = ""
+    d_ma = d_hi = d_lo = 0
     if ma20 and px:
+        d_ma, d_hi = round(ma20 - px), round((hi20 or ma20 * 1.05) - px)
+        d_lo = round((lo20 or ma20 * 0.95) - px)
         if px >= ma20:
-            buy_txt = "空仓的：回踩 %.0f 点（MA20）缩量不破就买，放量站上 %.0f 点可追加" % (ma20, hi20 or ma20 * 1.03)
-            sell_txt = "持仓的：冲高到 %.0f 点不过就减，放量跌破 %.0f 点减半，跌破 %.0f 点清仓" % (
-                hi20 or ma20 * 1.05, ma20, lo20 or ma20 * 0.95)
+            buy_txt = "空仓的：回踩 %.0f 点（MA20，距现价 %+d 点）缩量不破就买，放量站上 %.0f 点（%+d 点）可追加" % (
+                ma20, d_ma, hi20 or ma20 * 1.03, d_hi)
+            sell_txt = "持仓的：冲高到 %.0f 点（%+d 点）不过就减，放量跌破 %.0f 点减半，跌破 %.0f 点（%+d 点）清仓" % (
+                hi20 or ma20 * 1.05, d_hi, ma20, lo20 or ma20 * 0.95, d_lo)
         else:
-            buy_txt = "空仓的：先别买，等收盘站回 %.0f 点（MA20）再动手；反抽不过 %.0f 点不追" % (ma20, ma20 * 1.02)
-            sell_txt = "持仓的：反抽到 %.0f 点（MA20）不过就减，跌破 %.0f 点（20 日低）清掉短线仓" % (ma20, lo20 or ma20 * 0.95)
+            buy_txt = "空仓的：先别买，等收盘站回 %.0f 点（MA20，现价上方 %.0f 点）再动手；反抽不过 %.0f 点不追" % (
+                ma20, abs(d_ma), ma20 * 1.02)
+            sell_txt = "持仓的：反抽到 %.0f 点（上方 %.0f 点）不过就减，跌破 %.0f 点（下方 %.0f 点）清掉短线仓" % (
+                ma20, abs(d_ma), lo20 or ma20 * 0.95, abs(d_lo))
 
     if ml and ml_state in ("强化", "延续"):
         what = "只买 %s 板块的龙头/中军（%s 连板）" % (ml["board"], "%d" % ml["lbc_max"])
@@ -1610,7 +1616,8 @@ def build_advice(senti, idx, mainline):
     return {"stance": stance, "stance_key": sk, "commit": commit, "score": score,
             "buy": buy_txt, "sell": sell_txt, "checklist": checklist,
             "main_board": ml.get("board") if ml else "", "main_state": ml_state,
-            "ma20": ma20, "hi20": hi20, "lo20": lo20, "price": px}
+            "ma20": ma20, "hi20": hi20, "lo20": lo20, "price": px,
+            "pts": {"ma20": d_ma, "hi20": d_hi, "lo20": d_lo}}
 
 
 # ---------------------------------------------------------------- 输出

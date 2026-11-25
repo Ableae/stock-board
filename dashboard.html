@@ -53,6 +53,7 @@ h2 small{font-weight:400;color:var(--sub);font-size:12px}
 .icard .ip{display:flex;align-items:baseline;gap:8px;margin:5px 0 2px}
 .icard .ip b{font-size:19px;font-weight:700;line-height:1.1}
 .icard .spark{width:100%;height:38px;display:block;margin:5px 0 3px}
+.icard .js-ipts{font-size:11.5px;font-weight:600;opacity:.85}
 .icard .irow{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:#8b98ab;margin-top:2px}
 .icard .irow .mut{color:#66738a}
 .idxsum{display:flex;gap:10px;flex-wrap:wrap;margin-top:11px}
@@ -644,10 +645,11 @@ $("#kpis").innerHTML =
   const S = IX.summary || {};
   $("#idxgrid").innerHTML = IX.list.map(r=>{
     const k = cl(r.chg), c1 = k==="up" ? "var(--up)" : (k==="down" ? "var(--down)" : "var(--sub)");
-    return `<div class="icard" data-idx="${r.sym}">
+    return `<div class="icard" data-idx="${r.sym}" data-pre="${r.pre}">
       <div class="ih"><b>${r.name}</b><i>${r.code}</i><span class="pos">${r.pos}</span></div>
       <div class="ip"><b class="js-ipx ${k}" style="color:${c1}">${f(r.price,2)}</b>
-        <span class="js-ichg ${k}" style="color:${c1}">${r.chg>0?"+":""}${f(r.chg,2)}%</span></div>
+        <span class="js-ichg ${k}" style="color:${c1}">${r.chg>0?"+":""}${f(r.chg,2)}%</span>
+        <span class="js-ipts ${k}" style="color:${c1}">${(+(r.chg_pts||0))>0?"+":""}${f(r.chg_pts||0,2)} 点</span></div>
       <svg class="spark" viewBox="0 0 120 38" preserveAspectRatio="none">
         <polyline points="${r.path}" fill="none" stroke="${k==="down"?"#31c48d":"#ff5f5f"}" stroke-width="1.3" vector-effect="non-scaling-stroke"/>
         <polyline points="${r.path20}" fill="none" stroke="#5f7086" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
@@ -1380,10 +1382,18 @@ function setS(el, k, v){
     const IXQ = j.idx || {};
     document.querySelectorAll("[data-idx]").forEach(card=>{
       const q = IXQ[card.getAttribute("data-idx")]; if(!q) return;
-      const pe = card.querySelector(".js-ipx"), ce = card.querySelector(".js-ichg");
+      const pe = card.querySelector(".js-ipx"), ce = card.querySelector(".js-ichg"), te = card.querySelector(".js-ipts");
       const color = q.c>0 ? "var(--up)" : (q.c<0 ? "var(--down)" : "var(--sub)");
       setT(pe, q.p.toFixed(2)); setC(pe, "js-ipx " + cl(q.c)); setS(pe, "color", color);
       setT(ce, (q.c>0?"+":"") + q.c.toFixed(2) + "%"); setC(ce, "js-ichg " + cl(q.c)); setS(ce, "color", color);
+      if(te){
+        const pre = +(card.getAttribute("data-pre") || 0);
+        if(pre > 0){
+          const pts = q.p - pre;
+          setT(te, (pts>0?"+":"") + pts.toFixed(2) + " 点");
+          setC(te, "js-ipts " + cl(pts)); setS(te, "color", color);
+        }
+      }
     });
     /* 尾盘短线卡片：只换现价和涨跌幅 */
     document.querySelectorAll("[data-tail]").forEach(card=>{
