@@ -102,6 +102,32 @@ h2 small{font-weight:400;color:var(--sub);font-size:12px}
 .part .pb i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#2b5b7a,#4a8fc0)}
 .part .pn{font-size:11px;color:#7d8b9d}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;contain:layout paint}
+/* ==== 大盘建议 / 情绪主线 CSS ==== */
+.advbox{background:linear-gradient(180deg,#151c26,#121821);border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;margin-bottom:11px;contain:layout paint}
+.advbox .hd{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.advbox .hd b{font-size:17px;font-weight:800;color:#e8eff8}
+.advbox .hd i{font-style:normal;font-size:12px;padding:3px 9px;border-radius:6px;font-weight:700}
+.advbox .hd span{font-size:12px;color:#8b98ab}
+.advbox .cl{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:10px}
+.advbox .ci{background:#141a24;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.advbox .ci .k{font-size:11px;color:#7d8b9d}
+.advbox .ci .v{font-size:12.5px;color:#e6edf6;line-height:1.65;margin-top:2px}
+.advbox .ci .d{font-size:11px;color:#66738a;margin-top:3px;line-height:1.5}
+.mlbox{display:grid;grid-template-columns:1.02fr 1fr;gap:10px}
+.mlres{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;contain:layout paint}
+.mlres .big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mlres .big b{font-size:23px;font-weight:800;color:#e8eff8}
+.mlres .big i{font-style:normal;font-size:12px;padding:3px 9px;border-radius:6px;font-weight:700}
+.mlres .mlkv{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px dashed #222d3a}
+.mlres .mlkv span{color:#8b98ab}
+.mlres .mlkv b{color:#e8eff8}
+.mlres .mut{font-size:12px;color:#8b98ab;line-height:1.7;margin-top:8px}
+.mlrank .mrow{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #222d3a}
+.mlrank .mrow:last-child{border-bottom:none}
+.mlrank .nm{color:#e6edf6}
+.mlrank .nm i{font-style:normal;font-size:11px;color:#7d8b9d;margin-left:6px}
+.mlrank .num{color:#cfd9e6;white-space:nowrap}
 /* ==== 今日主板 ==== */
 .mbkpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px}
 .mbkpi{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
@@ -444,6 +470,7 @@ summary{cursor:pointer;font-size:11.5px;color:#9fb0c4}
 
   <section>
     <h2>大盘情绪 · 买卖点 <small>情绪温度 0–100 ｜ 冰点低吸 / 过热减仓</small></h2>
+    <div class="advbox" id="advBox"></div>
     <div class="sgrid">
       <div class="scard">
         <div class="gz"><b id="sScore">—</b><span>情绪温度</span><i id="sZone">—</i></div>
@@ -456,6 +483,11 @@ summary{cursor:pointer;font-size:11.5px;color:#9fb0c4}
     </div>
     <div class="siglist" id="siglist"></div>
     <div class="parts" id="sParts"></div>
+  </section>
+
+  <section>
+    <h2>情绪主线 <small>资金今天扎堆在哪个板块 ｜ 强化 / 延续 / 分歧 / 散乱</small></h2>
+    <div class="mlbox" id="mlBox"></div>
   </section>
 
   <section>
@@ -686,8 +718,60 @@ $("#kpis").innerHTML =
     温度 = 指数位置(20) + 均线结构(10) + 量能(12) + 成长端(6) + 广度(10) + 涨停家数(14) + 接力强度(12)
     + 赚钱效应(8) + 高度(4) + 封板质量(4)，满分 100。<br>
     档位：≥78 过热（只卖不买）｜62–78 偏热（只做强龙头）｜42–62 中性｜26–42 偏冷（分批试仓）｜&lt;26 冰点（恐慌低吸）。
-    这是环境判断，不是买卖建议；指数只决定仓位，个股买卖点仍看上方的精选卡片。
+    这是环境判断，不是预测；上面的「大盘买卖建议」是按规则推演的动作清单，执行与否由你决定。
   </div>`;
+})();
+
+/* ==== 大盘买卖建议 ==== */
+(function(){
+  const A = DATA.advice, box = $("#advBox");
+  if(!box) return;
+  if(!A || !A.stance){ box.style.display = "none"; return; }
+  const SC = {high:"high", warm:"warm", mid:"mid", cool:"cool", cold:"cold"};
+  box.innerHTML =
+    '<div class="hd"><b>' + A.stance + '</b>' +
+      '<i class="zs ' + (SC[A.stance_key]||"mid") + '">情绪 ' + f(A.score,1) + '</i>' +
+      '<span>' + (A.commit||"") + '</span></div>' +
+    '<div class="cl">' + (A.checklist||[]).map(function(c){
+      return '<div class="ci"><div class="k">' + c.k + '</div><div class="v">' + c.v +
+             '</div><div class="d">' + c.d + '</div></div>';
+    }).join("") + '</div>';
+})();
+
+/* ==== 情绪主线 ==== */
+(function(){
+  const M = DATA.mainline, box = $("#mlBox");
+  if(!box) return;
+  if(!M){ box.style.display = "none"; return; }
+  const T = M.top;
+  if(!T){
+    box.innerHTML = '<div class="mlres"><div class="mut">' + (M.note||"暂无主线数据") + '</div></div>';
+    return;
+  }
+  const SC = {hot:"high", mid:"mid", warm:"warm", cold:"cold"};
+  const lead = T.lead || {};
+  const rank = (M.rows||[]).slice(0,6).map(function(r,i){
+    return '<div class="mrow" data-lc="' + ((r.lead&&r.lead.code)||"") + '">' +
+      '<span class="nm">' + (i+1) + '. ' + r.board +
+        (r.lead ? '<i>' + r.lead.name + '（' + r.lead.code + '）' + (r.lead.lbc>1 ? ' · '+r.lead.lbc+'板' : '') + '</i>' : '') +
+      '</span><span class="num">' + r.zt + ' 只 · ' + r.lbc_max + ' 板 · 净买' +
+      (r.net_yi>=0?'+':'') + f(r.net_yi,2) + '亿</span></div>';
+  }).join("");
+  box.innerHTML =
+    '<div class="mlres">' +
+      '<div class="big"><b>' + T.board + '</b>' +
+        '<i class="zs ' + (SC[M.state_key]||"mid") + '">' + M.state + '</i>' +
+        '<span style="font-size:12px;color:#8b98ab">占全部涨停 ' + f(T.share,1) + '%</span></div>' +
+      '<div class="mlkv" style="margin-top:8px"><span>涨停家数 / 最高板</span><b>' + T.zt + ' 只 / ' + T.lbc_max + ' 板</b></div>' +
+      '<div class="mlkv"><span>2 板以上梯队</span><b>' + T.n2 + ' 只</b></div>' +
+      '<div class="mlkv"><span>主线龙头</span><b>' + (lead.name ? lead.name + '（' + lead.code + '）' + (lead.lbc>1 ? ' '+lead.lbc+'板' : '') : '—') + '</b></div>' +
+      '<div class="mlkv"><span>龙虎榜净买 / 封单</span><b>' + (T.net_yi>=0?'+':'') + f(T.net_yi,2) + ' 亿 / ' + f(T.seal_yi,2) + ' 亿</b></div>' +
+      '<div class="mut">' + M.note + '</div></div>' +
+    '<div class="mlres mlrank"><div style="font-size:12.5px;color:var(--gold);margin-bottom:5px">板块资金排名（涨停数 → 高度 → 净买）</div>' +
+      rank +
+      '<div class="mut">' + (M.unique
+        ? '第一名是第二名的 2 倍以上，资金抱团明确，回踩主线内龙头/中军优先。'
+        : '前几名差距不大，主线还没定死，跟风容易来回打脸，宁可只做最强的那个。') + '</div></div>';
 })();
 
 /* ==== 今日主板 ==== */

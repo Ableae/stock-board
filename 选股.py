@@ -958,6 +958,13 @@ def build(date_arg=None, live=False):
     print("      主板涨停 %d 家（占 %.1f%%），最高 %d 板" % (
         main_panel["mb_n"], main_panel["share"], main_panel["max_lbc"]))
 
+    ml_panel = build_mainline(cands)
+    top_ml = ml_panel.get("top") or {}
+    print("      情绪主线 %s（%s，%d 只涨停，最高 %d 板）" % (
+        top_ml.get("board") or "无", ml_panel["state"], top_ml.get("zt", 0), top_ml.get("lbc_max", 0)))
+    adv = build_advice(senti, idx_panel, ml_panel)
+    print("      大盘建议 %s ｜ 买 %s" % (adv["stance"], (adv["buy"] or "—")[:40]))
+
     return {
         "meta": {
             "trade_date": td, "base_date": base, "window": tdays,
@@ -973,6 +980,7 @@ def build(date_arg=None, live=False):
         "passed": passed, "near": near, "cands": cands, "picks": picks, "roles": roles,
         "tail": tail,
         "indexes": idx_panel, "sentiment": senti,
+        "mainline": ml_panel, "advice": adv,
         "lhb_table": [x for x in cands if x["lhb_reasons"]],
         "lianban_table": [x for x in cands if x["lbc"] > 0],
         "thresholds": th, "weights": weights
@@ -1506,6 +1514,103 @@ def build_sentiment(idx, stats, base, days):
             "zt_hist": hist, "zt_avg5": round(avg5, 1), "zt_ratio": round(zt_ratio, 2),
             "zbc_rate": round(zbc_rate, 3),
             "key": ({"ma20": sh["ma20"], "hi20": sh["hi20"], "lo20": sh["lo20"], "price": sh["price"]} if sh else {})}
+
+
+# ---------------------------------------------------------------- 情绪主线 / 大盘建议
+def build_mainline(cands):
+    """情绪主线：按行业板块聚合基准日涨停数/连板高度/龙虎榜净买/封单，判断资金主攻方向"""
+    boards = {}
+    for x in cands:
+        lbc = int(x.get("lbc") or 0)
+        if lbc <= 0:          # 只看基准日涨停的票
+            continue
+        b = (x.get("board") or "").strip() or "未分类"
+        r = boards.setdefault(b, {"board": b, "zt": 0, "lbc_max": 0, "n2": 0,
+                                  "net": 0.0, "seal": 0.0, "lead": None})
+        r["zt"] += 1
+        r["n2"] += 1 if lbc >= 2 else 0
+        r["net"] += safe(x.get("lhb_net"))
+        fv = safe(x.get("fund"))
+        r["seal"] += fv
+        r["lbc_max"] = max(r["lbc_max"], lbc)
+        if r["lead"] is None or (lbc, fv) > (r["lead"]["lbc"], r["lead"]["fund"]):
+            r["lead"] = {"name": x.get("name"), "code": x.get("code"), "lbc": lbc,
+                         "fund": fv, "fund_yi": round(fv / 1e8, 2)}
+    total = sum(r["zt"] for r in boards.values())
+    rows = sorted(boards.values(), key=lambda r: (r["zt"], r["lbc_max"], r["net"]), reverse=True)
+    out = []
+    for r in rows[:6]:
+        out.append({"board": r["board"], "zt": r["zt"], "lbc_max": r["lbc_max"], "n2": r["n2"],
+                    "net_yi": round(r["net"] / 1e4, 2), "seal_yi": round(r["seal"] / 1e8, 2),
+                    "lead": r["lead"],
+                    "share": round(r["zt"] * 100.0 / total, 1) if total else 0})
+    top = out[0] if out else None
+    if top:
+        if top["zt"] >= 5 and top["lbc_max"] >= 3 and top["n2"] >= 2:
+            state, sk, note = "强化", "hot", "主线在强化：涨停家数、连板高度、梯队同时到位，回踩主线龙头/中军可以继续做。"
+        elif top["zt"] >= 4 and top["lbc_max"] >= 2:
+            state, sk, note = "延续", "mid", "主线延续但高度一般：只做板块内龙头和中军，后排跟风票不碰。"
+        elif top["zt"] >= 2:
+            state, sk, note = "分歧", "warm", "主线有分歧：涨停家数不够、高度也不高，等板块重新聚齐再上，追高容易吃面。"
+        else:
+            state, sk, note = "散乱", "cold", "没有明确主线：资金各打各的，宁可空仓或只低吸指数，不硬找票。"
+    else:
+        state, sk, note = "无数据", "cold", "今日无涨停数据，无法判断主线。"
+    return {"top": top, "rows": out, "state": state, "state_key": sk, "note": note,
+            "total_zt": total,
+            "unique": bool(top and len(out) > 1 and top["zt"] >= out[1]["zt"] * 2)}
+
+
+def build_advice(senti, idx, mainline):
+    """大盘买卖建议：把情绪温度 + 指数位置 + 主线状态压成一句结论和执行清单"""
+    score = senti.get("score", 50)
+    K = senti.get("key") or {}
+    ma20, hi20, lo20, px = (safe(K.get("ma20")), safe(K.get("hi20")),
+                            safe(K.get("lo20")), safe(K.get("price")))
+    ml = (mainline or {}).get("top") or {}
+    ml_state = (mainline or {}).get("state", "")
+
+    if score >= 78:
+        stance, sk, commit = "减仓 · 防守", "high", "只卖不买，仓位压到 2 成以下"
+    elif score >= 62:
+        stance, sk, commit = "进攻 · 只做主线", "warm", "仓位 3–5 成，只买主线内龙头/中军"
+    elif score >= 42:
+        stance, sk, commit = "中性 · 轻仓做结构", "mid", "仓位 3 成左右，等主线重新聚齐再加"
+    elif score >= 26:
+        stance, sk, commit = "试探 · 分批低吸", "cool", "先 2 成试仓，跌破买点就止损"
+    else:
+        stance, sk, commit = "冰点 · 分批建仓", "cold", "分 2–3 次建到 3 成，别一次打满"
+
+    # 指数买卖点（点位都用上证，条件写清楚前置信号）
+    buy_txt = sell_txt = ""
+    if ma20 and px:
+        if px >= ma20:
+            buy_txt = "空仓的：回踩 %.0f 点（MA20）缩量不破就买，放量站上 %.0f 点可追加" % (ma20, hi20 or ma20 * 1.03)
+            sell_txt = "持仓的：冲高到 %.0f 点不过就减，放量跌破 %.0f 点减半，跌破 %.0f 点清仓" % (
+                hi20 or ma20 * 1.05, ma20, lo20 or ma20 * 0.95)
+        else:
+            buy_txt = "空仓的：先别买，等收盘站回 %.0f 点（MA20）再动手；反抽不过 %.0f 点不追" % (ma20, ma20 * 1.02)
+            sell_txt = "持仓的：反抽到 %.0f 点（MA20）不过就减，跌破 %.0f 点（20 日低）清掉短线仓" % (ma20, lo20 or ma20 * 0.95)
+
+    if ml and ml_state in ("强化", "延续"):
+        what = "只买 %s 板块的龙头/中军（%s 连板）" % (ml["board"], "%d" % ml["lbc_max"])
+    elif ml and ml_state == "分歧":
+        what = "%s 板块已分歧，只留龙头，后排一律不碰" % ml["board"]
+    elif ml:
+        what = "主线散乱（%s 只有 %d 只涨停），宁可空仓等主线" % (ml["board"], ml["zt"])
+    else:
+        what = "等主线出现再买"
+
+    checklist = [
+        {"k": "仓位", "v": senti.get("position") or "—", "d": commit},
+        {"k": "买什么", "v": what, "d": "主线 = 涨停家数最多、高度最高的那个板块"},
+        {"k": "买点", "v": buy_txt or "—", "d": "指数只决定仓位，个股到价再看个股买点"},
+        {"k": "卖点", "v": sell_txt or "—", "d": "先减后清的顺序，别一次砍完"},
+    ]
+    return {"stance": stance, "stance_key": sk, "commit": commit, "score": score,
+            "buy": buy_txt, "sell": sell_txt, "checklist": checklist,
+            "main_board": ml.get("board") if ml else "", "main_state": ml_state,
+            "ma20": ma20, "hi20": hi20, "lo20": lo20, "price": px}
 
 
 # ---------------------------------------------------------------- 输出
